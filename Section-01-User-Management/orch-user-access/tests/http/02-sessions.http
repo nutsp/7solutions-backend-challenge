@@ -1,0 +1,91 @@
+# Run requests in order. Refresh rotates its token; do not reuse the old one.
+@baseUrl = http://127.0.0.1:8080
+@password = correct-horse-battery
+
+### Create a temporary account — 201; initial session is retained for cleanup
+# @name registerSessionUser
+POST {{baseUrl}}/api/v1/users
+Content-Type: application/json
+
+{
+  "name": "HTTP Session Test",
+  "email": "http-sessions-{{$guid}}@example.com",
+  "password": "{{password}}"
+}
+
+?? status == 201
+
+### Login creates a session — 201; Location: /api/v1/sessions/current
+# @name login
+# @ref registerSessionUser
+POST {{baseUrl}}/api/v1/sessions
+Content-Type: application/json
+
+{
+  "email": "{{registerSessionUser.data.user.email}}",
+  "password": "{{password}}"
+}
+
+?? status == 201
+
+### Use the access token — 200
+# @ref login
+GET {{baseUrl}}/api/v1/users/me
+Authorization: Bearer {{login.data.access_token}}
+
+?? status == 200
+
+### Rotate tokens — 200; capture the new pair
+# @name refresh
+# @ref login
+POST {{baseUrl}}/api/v1/sessions/current/tokens
+Content-Type: application/json
+
+{
+  "refresh_token": "{{login.data.refresh_token}}"
+}
+
+?? status == 200
+
+### Reusing the previous refresh token is rejected — 401
+# @ref login
+POST {{baseUrl}}/api/v1/sessions/current/tokens
+Content-Type: application/json
+
+{
+  "refresh_token": "{{login.data.refresh_token}}"
+}
+
+?? status == 401
+
+### Logout the rotated session — 204, empty body
+# @ref refresh
+DELETE {{baseUrl}}/api/v1/sessions/current
+Authorization: Bearer {{refresh.data.access_token}}
+
+?? status == 204
+
+### Logged-out access token is rejected — 401
+# @ref refresh
+GET {{baseUrl}}/api/v1/users/me
+Authorization: Bearer {{refresh.data.access_token}}
+
+?? status == 401
+
+### Logged-out refresh token is rejected — 401
+# @ref refresh
+POST {{baseUrl}}/api/v1/sessions/current/tokens
+Content-Type: application/json
+
+{
+  "refresh_token": "{{refresh.data.refresh_token}}"
+}
+
+?? status == 401
+
+### Delete test account using its separate initial session — 204; cleanup
+# @ref registerSessionUser
+DELETE {{baseUrl}}/api/v1/users/{{registerSessionUser.data.user.id}}
+Authorization: Bearer {{registerSessionUser.data.tokens.access_token}}
+
+?? status == 204

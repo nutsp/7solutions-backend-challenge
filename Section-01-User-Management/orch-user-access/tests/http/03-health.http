@@ -1,0 +1,16 @@
+@baseUrl = http://127.0.0.1:8080
+
+### Process liveness — 200, data.status = alive
+GET {{baseUrl}}/healthzc
+
+?? status == 200
+
+### Liveness compatibility alias — 200
+GET {{baseUrl}}/healthz
+
+?? status == 200
+
+### Readiness — 200, data.status = ready; 503 when a dependency is unavailable
+GET {{baseUrl}}/readyz
+
+?? status == 200

@@ -1,0 +1,49 @@
+# YAML values may be overridden by environment variables through Viper.
+# Configure credentials here for local use; production supplies them through secrets.
+logger:
+  service: "core-user-manage"
+  level: info
+  format: json
+  add_source: false
+lifecycle:
+  cleanup_timeout: 5s
+grpc_server:
+  address: ":9091"
+  allow_insecure: false
+  request_timeout: 5s
+  shutdown_timeout: 10s
+  probe_interval: 2s
+  probe_timeout: 1s
+  max_receive_bytes: 32768
+  max_header_bytes: 16384
+  max_concurrent_streams: 100
+grpc_healthcheck:
+  request_timeout: 5s
+  health_timeout: 2s
+mongo:
+  uri: "mongodb://127.0.0.1:27017"
+  database: identity
+  app_name: core-user-manage
+  username: ""
+  password: ""
+  auth_source: identity
+  max_pool_size: 50
+  min_pool_size: 2
+  max_connecting: 4
+  max_conn_idle_time: 5m
+  connect_timeout: 5s
+  server_selection_timeout: 5s
+  operation_timeout: 5s
+  ping_timeout: 10s
+
+# Key IDs are immutable. Retain old keys when rotating.
+cryptography:
+  user_key_id: v1
+  audit_key_id: v1
+
+
+# JSON maps of key IDs to base64-encoded 32-byte keys.
+user_data_keys: '{}'
+user_audit_keys: '{}'
+# Base64-encoded independent 32-byte HMAC key.
+email_lookup_key: ""

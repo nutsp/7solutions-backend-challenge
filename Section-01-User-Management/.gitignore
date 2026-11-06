@@ -1,0 +1,12 @@
+# Independent Git repository kept beside the service modules.
+/ensure-index/
+
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+
+# Generated code indexes are not project artifacts.
+graphify-out/
+docs/code-graph/

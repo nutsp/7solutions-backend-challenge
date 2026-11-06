@@ -1,0 +1,15 @@
+all: false
+template: testify
+formatter: goimports
+dir: '{{.InterfaceDir}}/../mocks'
+filename: 'mock_{{.InterfaceName}}.go'
+pkgname: mocks
+structname: 'Mock{{.InterfaceName}}'
+packages:
+  github.com/nutsp/7solutions-backend-challenge/core-user-manage/internal/domain:
+    interfaces:
+      UserAuditRepository:
+      TransactionManager:
+      UserRepository:
+      PasswordHasher:
+      UserService:

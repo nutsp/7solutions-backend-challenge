@@ -1,0 +1,51 @@
+# YAML values may be overridden by environment variables through Viper.
+# Configure credentials here for local use; production supplies them through secrets.
+logger:
+  service: "core-authentication"
+  level: info
+  format: json
+  add_source: false
+lifecycle:
+  cleanup_timeout: 5s
+grpc_server:
+  address: ":9092"
+  allow_insecure: false
+  request_timeout: 5s
+  shutdown_timeout: 10s
+  probe_interval: 2s
+  probe_timeout: 1s
+  max_receive_bytes: 32768
+  max_header_bytes: 16384
+  max_concurrent_streams: 100
+grpc_healthcheck:
+  request_timeout: 5s
+  health_timeout: 2s
+core_user_grpc:
+  address: "localhost:9091"
+  service_name: auth
+  service_token: ""
+  request_timeout: 5s
+  health_timeout: 2s
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  username: "default"
+  password: ""
+  db: 0
+  pool_size: 20
+  min_idle_conns: 0
+  max_idle_conns: 20
+  max_active_conns: 20
+  pool_timeout: 2s
+  dial_timeout: 3s
+  read_timeout: 1s
+  write_timeout: 1s
+  conn_max_idle_time: 30m
+  conn_max_lifetime: 0s
+  ping_timeout: 5s
+  tls: false
+jwt_issuer: "core-authentication"
+jwt_audience: "orch-user-access"
+access_token_seconds: 900
+
+jwt_secret: ""

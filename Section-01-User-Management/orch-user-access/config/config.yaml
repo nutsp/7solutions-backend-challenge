@@ -1,0 +1,29 @@
+# YAML values may be overridden by environment variables through Viper.
+# Configure credentials here for local use; production supplies them through secrets.
+logger:
+  service: "orch-user-access"
+  level: info
+  format: json
+  add_source: false
+lifecycle:
+  cleanup_timeout: 5s
+http:
+  address: "127.0.0.1:8080"
+  read_header_timeout: 5s
+  read_timeout: 10s
+  write_timeout: 10s
+  idle_timeout: 60s
+  shutdown_timeout: 10s
+  max_header_bytes: 16384
+core_auth_grpc:
+  address: "localhost:9092"
+  service_name: orch
+  service_token: ""
+  request_timeout: 5s
+  health_timeout: 2s
+core_user_grpc:
+  address: "localhost:9091"
+  service_name: orch
+  service_token: ""
+  request_timeout: 5s
+  health_timeout: 2s

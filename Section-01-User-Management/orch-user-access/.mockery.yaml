@@ -1,0 +1,13 @@
+all: false
+template: testify
+formatter: goimports
+dir: '{{.InterfaceDir}}/../mocks'
+filename: 'mock_{{.InterfaceName}}.go'
+pkgname: mocks
+structname: 'Mock{{.InterfaceName}}'
+packages:
+  github.com/nutsp/7solutions-backend-challenge/orch-user-access/internal/domain:
+    interfaces:
+      UserAccessService:
+      CoreUserAdapter:
+      CoreAuthenticationAdapter:

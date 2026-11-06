@@ -1,0 +1,177 @@
+name: seven-solutions
+services:
+  mongo-keyfile-init:
+    image: mongo:8.0
+    user: '0:0'
+    entrypoint: [bash, -ec]
+    command:
+      - 'if [ ! -s /keyfile/keyfile ]; then umask 077; head -c 756 /dev/urandom | base64 > /keyfile/keyfile; fi; chown 999:999 /keyfile/keyfile; chmod 400 /keyfile/keyfile'
+    volumes: [mongo-keyfile:/keyfile]
+    restart: 'no'
+  user-mongo:
+    image: mongo:8.0
+    command: [mongod, --replSet, rs0, --keyFile, /run/mongo-keyfile/keyfile, --bind_ip_all]
+    depends_on:
+      mongo-keyfile-init: {condition: service_completed_successfully}
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${IDENTITY_MONGO_ROOT_PASSWORD:?Run make dev-env}
+      MONGO_APP_DB: identity
+      MONGO_APP_USER: identity
+      MONGO_APP_PASSWORD: ${IDENTITY_MONGO_PASSWORD:?Run make dev-env}
+    volumes:
+      - identity-data:/data/db
+      - mongo-keyfile:/run/mongo-keyfile:ro
+      - ./mongo/init.js:/docker-entrypoint-initdb.d/01-user.js:ro
+    networks: [user-db]
+    healthcheck:
+      test: [CMD-SHELL, 'mongosh --quiet -u "$$MONGO_APP_USER" -p "$$MONGO_APP_PASSWORD" --authenticationDatabase "$$MONGO_APP_DB" --eval "db.runCommand({ping:1}).ok" | grep -q 1']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  mongo-rs-init:
+    image: mongo:8.0
+    entrypoint: [bash, -ec]
+    command:
+      - 'exec mongosh --quiet --host user-mongo:27017 --username root --password "$$MONGO_ADMIN_PASSWORD" --authenticationDatabase admin /scripts/replica-init.js'
+    environment:
+      MONGO_ADMIN_PASSWORD: ${IDENTITY_MONGO_ROOT_PASSWORD:?Run make dev-env}
+    volumes: ['./mongo/replica-init.js:/scripts/replica-init.js:ro']
+    depends_on:
+      user-mongo: {condition: service_healthy}
+    networks: [user-db]
+    restart: 'no'
+  ensure-index:
+    profiles: [tools]
+    image: seven-solutions-ensure-index:latest
+    build: {context: ../ensure-index}
+    environment:
+      MONGO_URI: mongodb://user-mongo:27017/?replicaSet=rs0
+      MONGO_USERNAME: root
+      MONGO_PASSWORD: ${IDENTITY_MONGO_ROOT_PASSWORD:?Run make dev-env}
+      MONGO_AUTH_SOURCE: admin
+    depends_on:
+      mongo-rs-init: {condition: service_completed_successfully}
+    networks: [user-db]
+    restart: 'no'
+  auth-redis:
+    image: redis:7.4-alpine
+    environment:
+      REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:?Run make dev-env}
+    command: [sh, -c, 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    volumes: [auth-redis-data:/data]
+    networks: [auth-cache]
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  mongo-express:
+    image: mongo-express:1.0.2
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://root:${IDENTITY_MONGO_ROOT_PASSWORD:?Run make dev-env}@user-mongo:27017/?authSource=admin&replicaSet=rs0
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: 'true'
+      ME_CONFIG_BASICAUTH: 'false'
+    ports: ['127.0.0.1:${MONGO_EXPRESS_PORT:-8081}:8081']
+    depends_on:
+      mongo-rs-init: {condition: service_completed_successfully}
+    networks: [user-db, edge]
+    restart: unless-stopped
+  redis-insight:
+    image: redis/redisinsight:3.8.0
+    environment:
+      RI_REDIS_HOST: auth-redis
+      RI_REDIS_PORT: '6379'
+      RI_REDIS_USERNAME: default
+      RI_REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD:?Run make dev-env}
+      RI_REDIS_DB: '0'
+      RI_REDIS_ALIAS: Auth sessions
+    ports: ['127.0.0.1:${REDIS_INSIGHT_PORT:-5540}:5540']
+    volumes: [redis-insight-data:/data]
+    depends_on:
+      auth-redis: {condition: service_healthy}
+    networks: [auth-cache, edge]
+    restart: unless-stopped
+  core-user-manage:
+    image: seven-solutions-core-user-manage:latest
+    build: {context: ../core-user-manage, target: service}
+    environment:
+      GRPC_SERVER_ADDRESS: 0.0.0.0:9091
+      GRPC_SERVER_ALLOW_INSECURE: 'true'
+      GRPC_HEALTHCHECK_ALLOW_INSECURE: 'true'
+      MONGO_URI: mongodb://user-mongo:27017/?replicaSet=rs0
+      MONGO_USERNAME: identity
+      MONGO_PASSWORD: ${IDENTITY_MONGO_PASSWORD}
+      MONGO_AUTH_SOURCE: identity
+      USER_DATA_KEYS: ${USER_DATA_KEYS:?Generate encryption keys with make dev-env}
+      USER_AUDIT_KEYS: ${USER_AUDIT_KEYS:?Generate encryption keys with make dev-env}
+      EMAIL_LOOKUP_KEY: ${EMAIL_LOOKUP_KEY:?Generate encryption keys with make dev-env}
+      CRYPTOGRAPHY_USER_KEY_ID: ${CRYPTOGRAPHY_USER_KEY_ID:-v1}
+      CRYPTOGRAPHY_AUDIT_KEY_ID: ${CRYPTOGRAPHY_AUDIT_KEY_ID:-v1}
+    depends_on:
+      mongo-rs-init: {condition: service_completed_successfully}
+    networks: [backend, user-db]
+    healthcheck:
+      test: [CMD, /app/server, --healthcheck]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    stop_grace_period: 20s
+    restart: unless-stopped
+  core-authentication:
+    build: {context: ../core-authentication}
+    environment:
+      GRPC_SERVER_ADDRESS: 0.0.0.0:9092
+      GRPC_SERVER_ALLOW_INSECURE: 'true'
+      GRPC_HEALTHCHECK_ALLOW_INSECURE: 'true'
+      CORE_USER_GRPC_ADDRESS: core-user-manage:9091
+      CORE_USER_GRPC_ALLOW_INSECURE: 'true'
+      REDIS_HOST: auth-redis
+      REDIS_PORT: 6379
+      REDIS_USERNAME: default
+      REDIS_PASSWORD: ${AUTH_REDIS_PASSWORD}
+      REDIS_DB: 0
+      JWT_SECRET: ${JWT_SECRET:?Run make dev-env}
+    depends_on:
+      core-user-manage: {condition: service_healthy}
+      auth-redis: {condition: service_healthy}
+    networks: [backend, auth-cache]
+    healthcheck:
+      test: [CMD, /app/server, --healthcheck]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    stop_grace_period: 20s
+    restart: unless-stopped
+  orch-user-access:
+    build: {context: ../orch-user-access}
+    environment:
+      HTTP_ADDRESS: 0.0.0.0:8080
+      CORE_USER_GRPC_ALLOW_INSECURE: 'true'
+      CORE_AUTH_GRPC_ALLOW_INSECURE: 'true'
+      CORE_USER_GRPC_ADDRESS: core-user-manage:9091
+      CORE_AUTH_GRPC_ADDRESS: core-authentication:9092
+    ports: ['127.0.0.1:${GATEWAY_PORT:-8080}:8080']
+    depends_on:
+      core-user-manage: {condition: service_healthy}
+      core-authentication: {condition: service_healthy}
+    networks: [backend, edge]
+    healthcheck:
+      test: [CMD, wget, -q, --spider, 'http://127.0.0.1:8080/readyz']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    stop_grace_period: 20s
+    restart: unless-stopped
+volumes:
+  mongo-keyfile:
+  identity-data:
+  auth-redis-data:
+  redis-insight-data:
+networks:
+  backend: {internal: true}
+  user-db: {internal: true}
+  auth-cache: {internal: true}
+  edge:

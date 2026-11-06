@@ -1,0 +1,14 @@
+all: false
+template: testify
+formatter: goimports
+dir: '{{.InterfaceDir}}/../mocks'
+filename: 'mock_{{.InterfaceName}}.go'
+pkgname: mocks
+structname: 'Mock{{.InterfaceName}}'
+packages:
+  github.com/nutsp/7solutions-backend-challenge/core-authentication/internal/domain:
+    interfaces:
+      SessionRepository:
+      CoreUserAdapter:
+      AuthenticationSecurityAdapter:
+      AuthenticationService:

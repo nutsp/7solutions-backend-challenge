@@ -1,0 +1,182 @@
+# Run requests in order. This file owns two temporary accounts; delete both at the end.
+@baseUrl = http://127.0.0.1:8080
+@password = correct-horse-battery
+
+### Create owner fixture — 201
+# @name registerOwner
+POST {{baseUrl}}/api/v1/users
+Content-Type: application/json
+
+{
+  "name": "HTTP Error Test Owner",
+  "email": "http-owner-{{$guid}}@example.com",
+  "password": "{{password}}"
+}
+
+?? status == 201
+
+### Create a different user — 201
+# @name registerOther
+POST {{baseUrl}}/api/v1/users
+Content-Type: application/json
+
+{
+  "name": "HTTP Error Test Other",
+  "email": "http-other-{{$guid}}@example.com",
+  "password": "{{password}}"
+}
+
+?? status == 201
+
+### Required fields / email / password validation — 400
+POST {{baseUrl}}/api/v1/users
+Content-Type: application/json
+
+{
+  "name": "",
+  "email": "invalid-email",
+  "password": "short"
+}
+
+?? status == 400
+
+### Duplicate email — 409
+# @ref registerOwner
+POST {{baseUrl}}/api/v1/users
+Content-Type: application/json
+
+{
+  "name": "Duplicate",
+  "email": "{{registerOwner.data.user.email}}",
+  "password": "{{password}}"
+}
+
+?? status == 409
+
+### Wrong password — 401
+# @ref registerOwner
+POST {{baseUrl}}/api/v1/sessions
+Content-Type: application/json
+
+{
+  "email": "{{registerOwner.data.user.email}}",
+  "password": "incorrect-password"
+}
+
+?? status == 401
+
+### Missing JWT — 401
+GET {{baseUrl}}/api/v1/users
+
+?? status == 401
+
+### Invalid JWT — 401
+GET {{baseUrl}}/api/v1/users/me
+Authorization: Bearer invalid-token
+
+?? status == 401
+
+### Authenticated request with malformed user ID — 400
+# @ref registerOwner
+GET {{baseUrl}}/api/v1/users/not-a-user-id
+Authorization: Bearer {{registerOwner.data.tokens.access_token}}
+
+?? status == 400
+
+### Random, validly formatted missing ID — 404
+# @ref registerOwner
+GET {{baseUrl}}/api/v1/users/00000000000000000000000000000000
+Authorization: Bearer {{registerOwner.data.tokens.access_token}}
+
+?? status == 404
+
+### Invalid pagination — 400
+# @ref registerOwner
+GET {{baseUrl}}/api/v1/users?limit=101
+Authorization: Bearer {{registerOwner.data.tokens.access_token}}
+
+?? status == 400
+
+### Empty patch — 400
+# @ref registerOwner
+PATCH {{baseUrl}}/api/v1/users/{{registerOwner.data.user.id}}
+Authorization: Bearer {{registerOwner.data.tokens.access_token}}
+Content-Type: application/json
+
+{}
+
+?? status == 400
+
+### UpdatedAt is server-owned — 400
+# @ref registerOwner
+PATCH {{baseUrl}}/api/v1/users/{{registerOwner.data.user.id}}
+Authorization: Bearer {{registerOwner.data.tokens.access_token}}
+Content-Type: application/json
+
+{
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+
+?? status == 400
+
+### Updating someone else's account — 403
+# @ref registerOther
+# @ref registerOwner
+PATCH {{baseUrl}}/api/v1/users/{{registerOther.data.user.id}}
+Authorization: Bearer {{registerOwner.data.tokens.access_token}}
+Content-Type: application/json
+
+{
+  "name": "Unauthorized Update"
+}
+
+?? status == 403
+
+### Deleting someone else's account — 403
+# @ref registerOther
+# @ref registerOwner
+DELETE {{baseUrl}}/api/v1/users/{{registerOther.data.user.id}}
+Authorization: Bearer {{registerOwner.data.tokens.access_token}}
+
+?? status == 403
+
+### Missing refresh token — 400
+POST {{baseUrl}}/api/v1/sessions/current/tokens
+Content-Type: application/json
+
+{}
+
+?? status == 400
+
+### Missing logout token — 401
+DELETE {{baseUrl}}/api/v1/sessions/current
+
+?? status == 401
+
+### Unsupported method — 405
+# @ref registerOwner
+PUT {{baseUrl}}/api/v1/users/{{registerOwner.data.user.id}}
+
+?? status == 405
+
+### Removed route — 404
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{}
+
+?? status == 404
+
+### Delete the other test account — 204; cleanup
+# @ref registerOther
+DELETE {{baseUrl}}/api/v1/users/{{registerOther.data.user.id}}
+Authorization: Bearer {{registerOther.data.tokens.access_token}}
+
+?? status == 204
+
+### Delete the owner test account — 204; cleanup
+# @ref registerOwner
+DELETE {{baseUrl}}/api/v1/users/{{registerOwner.data.user.id}}
+Authorization: Bearer {{registerOwner.data.tokens.access_token}}
+
+?? status == 204

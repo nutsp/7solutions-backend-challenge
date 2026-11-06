@@ -1,0 +1,77 @@
+# Run requests in order with the VS Code httpyac extension.
+@baseUrl = http://127.0.0.1:8080
+@password = correct-horse-battery
+
+### Register — 201; response contains user + initial tokens and Location
+# @name register
+POST {{baseUrl}}/api/v1/users
+Content-Type: application/json
+
+{
+  "name": "HTTP Test User",
+  "email": "http-users-{{$guid}}@example.com",
+  "password": "{{password}}"
+}
+
+?? status == 201
+
+### Current profile — 200; id matches the registration response
+# @ref register
+GET {{baseUrl}}/api/v1/users/me
+Authorization: Bearer {{register.data.tokens.access_token}}
+
+?? status == 200
+
+### Get user by ID — 200; password hash is never returned
+# @ref register
+GET {{baseUrl}}/api/v1/users/{{register.data.user.id}}
+Authorization: Bearer {{register.data.tokens.access_token}}
+
+?? status == 200
+
+### List users — 200; use listUsers.data.next_cursor if present
+# @name listUsers
+# @ref register
+GET {{baseUrl}}/api/v1/users?limit=2
+Authorization: Bearer {{register.data.tokens.access_token}}
+
+?? status == 200
+
+### Update name — 200; CreatedAt stays fixed, UpdatedAt advances on change
+# @ref register
+PATCH {{baseUrl}}/api/v1/users/{{register.data.user.id}}
+Authorization: Bearer {{register.data.tokens.access_token}}
+Content-Type: application/json
+
+{
+  "name": "HTTP Test User Updated"
+}
+
+?? status == 200
+
+### Update email — 200; next login must use this new email
+# @name updateEmail
+# @ref register
+PATCH {{baseUrl}}/api/v1/users/{{register.data.user.id}}
+Authorization: Bearer {{register.data.tokens.access_token}}
+Content-Type: application/json
+
+{
+  "email": "http-updated-{{$guid}}@example.com"
+}
+
+?? status == 200
+
+### Delete own account and revoke sessions — 204, empty body; cleanup
+# @ref register
+DELETE {{baseUrl}}/api/v1/users/{{register.data.user.id}}
+Authorization: Bearer {{register.data.tokens.access_token}}
+
+?? status == 204
+
+### Deleted account's token is rejected — 401
+# @ref register
+GET {{baseUrl}}/api/v1/users/me
+Authorization: Bearer {{register.data.tokens.access_token}}
+
+?? status == 401

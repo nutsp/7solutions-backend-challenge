@@ -1,0 +1,32 @@
+syntax = "proto3";
+package platform.user.v1;
+option go_package = "github.com/nutsp/7solutions-backend-challenge/core-authentication/pkg/proto/core-user-manage;userpb";
+
+message Empty {}
+message User {
+ string id = 1; string name = 2; string email = 3; reserved 4;
+ reserved 5; string created_at = 6; reserved 7; string updated_at = 8;
+}
+message UserID { string id = 1; }
+message Email { string email = 1; }
+message CreateUserRequest {
+ reserved 1; string name = 2; string email = 3;
+ string password = 4; reserved 5;
+}
+message Credential { string user_id = 1; string password_hash = 2; }
+message ListUsersRequest { int32 limit = 1; string after = 2; }
+message ListUsersResponse { repeated User users = 1; string next_cursor = 2; }
+message UpdateUserRequest {
+ string id = 1; optional string name = 2; optional string email = 3;
+ reserved 4, 5;
+}
+service IdentityService {
+ rpc CreateUser(CreateUserRequest) returns (User);
+ rpc GetUser(UserID) returns (User);
+ rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+ rpc UpdateUser(UpdateUserRequest) returns (User);
+ rpc DeleteUser(UserID) returns (Empty);
+ rpc GetInternal(UserID) returns (User);
+ // Password hashes are returned only to the authenticated core-authentication caller.
+ rpc FindCredential(Email) returns (Credential);
+}
